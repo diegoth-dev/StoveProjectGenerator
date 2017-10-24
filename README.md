@@ -1,3 +1,3 @@
 # StoveProjectGenerator
 
-Project generator that constructed with Stove.
+Generator for projects that constructed with Stove.
