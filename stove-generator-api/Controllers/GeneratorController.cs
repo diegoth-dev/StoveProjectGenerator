@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.IO.Compression;
-
+using System.Net;
 using LibGit2Sharp;
 
 using Microsoft.AspNetCore.Mvc;
@@ -14,6 +14,7 @@ namespace StoveGeneratorApi.Controllers
     [Route("api/generator")]
     public class GeneratorController : Controller
     {
+        private const string ContentType = "application/zip";
         private readonly ILogger<GeneratorController> _logger;
 
         public GeneratorController(ILogger<GeneratorController> logger)
@@ -22,35 +23,55 @@ namespace StoveGeneratorApi.Controllers
         }
 
         [HttpGet]
-        [Route("generate/{projectName}")]
-        public FileContentResult Generate(string projectName)
+        [Route("generate/{placeHolder}/{projectName}/{repositoryLink}")]
+        public FileContentResult Generate(string placeHolder, string projectName, string repositoryLink)
         {
             try
             {
+                string repoUrl = WebUtility.UrlDecode(repositoryLink);
+
                 DirectoryInfo directory = Directory.GetParent(Directory.GetCurrentDirectory());
-                string templatePath = Path.Combine(directory.FullName, $"template-{Guid.NewGuid():N}");
                 string zipPath = Path.Combine(directory.FullName, $"{projectName}.zip");
 
-                string clonedRepoPath = Repository.Clone("yourrepsitorylik", templatePath);
+                SolutionGenerater solutionGenerater = new SolutionGenerater();
+                Byte[] zipBytes = solutionGenerater.Generate(repoUrl, placeHolder, projectName);
 
-                new Repository(clonedRepoPath).Dispose();
-
-                var solutionRenamer = new SolutionRenamer(templatePath, null, "StoveProjectName", null, projectName)
+                return new FileContentResult(zipBytes, ContentType)
                 {
-                    CreateBackup = false
+                    FileDownloadName = zipPath
                 };
-                solutionRenamer.Run();
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception.ToString());
+                throw;
+            }
+        }
 
-                ZipFile.CreateFromDirectory(templatePath, zipPath);
+        [HttpGet]
+        [Route("generate/{placeHolder}/{projectName}/{repositoryLink}/{username}/{password}")]
+        public FileContentResult Generate(string placeHolder, string projectName, string repositoryLink, string username, string password)
+        {
+            try
+            {
+                string repoUrl = WebUtility.UrlDecode(repositoryLink);
+                CloneOptions cloneOptions = new CloneOptions()
+                {
+                    CredentialsProvider = (_url, _user, _cred) => new UsernamePasswordCredentials
+                    {
+                        Username = username,
+                        Password = password
+                    }
+                };
 
-                FileHelper.DeleteDirectory(templatePath);
+                SolutionGenerater solutionGenerater = new SolutionGenerater();
+                Byte[] zipBytes = solutionGenerater.Generate(repoUrl, placeHolder, projectName, cloneOptions);
 
-                const string contentType = "application/zip";
-                byte[] zipBytes = System.IO.File.ReadAllBytes(zipPath);
 
-                System.IO.File.Delete(zipPath);
+                DirectoryInfo directory = Directory.GetParent(Directory.GetCurrentDirectory());
+                string zipPath = Path.Combine(directory.FullName, $"{projectName}.zip");
 
-                return new FileContentResult(zipBytes, contentType)
+                return new FileContentResult(zipBytes, ContentType)
                 {
                     FileDownloadName = zipPath
                 };
